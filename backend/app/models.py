@@ -29,11 +29,11 @@ class StockPrice(SQLModel, table=True):
     """Historical daily stock price."""
     id: Optional[int] = Field(default=None, primary_key=True)
     ticker: str = Field(foreign_key="company.ticker", index=True)
-    date: date = Field(index=True)
-    open: float
-    high: float
-    low: float
-    close: float
+    price_date: date = Field(index=True)
+    open_price: float
+    high_price: float
+    low_price: float
+    close_price: float
     adj_close: float
     volume: int
 
@@ -59,7 +59,7 @@ class AnalystRating(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     analyst_id: str = Field(foreign_key="analyst.analyst_id", index=True)
     ticker: str = Field(foreign_key="company.ticker", index=True)
-    date: date = Field(index=True)
+    rating_date: date = Field(index=True)
     rating: str  # buy, sell, hold, strong_buy, strong_sell
     price_target: Optional[float] = None
     

@@ -159,7 +159,7 @@ def get_analyst(analyst_id: str, session: Session = Depends(get_session)):
         Company, AnalystRating.ticker == Company.ticker, isouter=True
     ).where(
         AnalystRating.analyst_id == analyst_id
-    ).order_by(AnalystRating.date.desc())
+    ).order_by(AnalystRating.rating_date.desc())
 
     results = session.exec(stmt).all()
 
@@ -167,7 +167,7 @@ def get_analyst(analyst_id: str, session: Session = Depends(get_session)):
         RatingSummary(
             ticker=r[0].ticker,
             company_name=r[1],
-            date=r[0].date,
+            date=r[0].rating_date,
             rating=r[0].rating,
             price_target=r[0].price_target,
             was_accurate=r[0].was_accurate,
@@ -257,7 +257,7 @@ def get_company(ticker: str, session: Session = Depends(get_session)):
         Analyst, AnalystRating.analyst_id == Analyst.analyst_id, isouter=True
     ).where(
         AnalystRating.ticker == ticker.upper()
-    ).order_by(AnalystRating.date.desc())
+    ).order_by(AnalystRating.rating_date.desc())
 
     results = session.exec(stmt).all()
 
@@ -267,7 +267,7 @@ def get_company(ticker: str, session: Session = Depends(get_session)):
             analyst_name=r[1].name if r[1] else "Unknown",
             firm=r[1].firm if r[1] else "Unknown",
             confidence_score=r[1].confidence_score if r[1] else None,
-            date=r[0].date,
+            date=r[0].rating_date,
             rating=r[0].rating,
             price_target=r[0].price_target,
         )
@@ -302,20 +302,20 @@ def get_company_prices(
     stmt = select(StockPrice).where(StockPrice.ticker == ticker.upper())
 
     if start_date:
-        stmt = stmt.where(StockPrice.date >= start_date)
+        stmt = stmt.where(StockPrice.price_date >= start_date)
     if end_date:
-        stmt = stmt.where(StockPrice.date <= end_date)
+        stmt = stmt.where(StockPrice.price_date <= end_date)
 
-    stmt = stmt.order_by(StockPrice.date)
+    stmt = stmt.order_by(StockPrice.price_date)
     prices = session.exec(stmt).all()
 
     return [
         {
-            "date": p.date.isoformat(),
-            "open": p.open,
-            "high": p.high,
-            "low": p.low,
-            "close": p.close,
+            "date": p.price_date.isoformat(),
+            "open": p.open_price,
+            "high": p.high_price,
+            "low": p.low_price,
+            "close": p.close_price,
             "volume": p.volume,
         }
         for p in prices

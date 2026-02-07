@@ -78,12 +78,12 @@ class IngestionService:
             # Check for most recent price in DB
             stmt = select(StockPrice).where(
                 StockPrice.ticker == ticker
-            ).order_by(StockPrice.date.desc()).limit(1)
+            ).order_by(StockPrice.price_date.desc()).limit(1)
             latest = session.exec(stmt).first()
 
             fetch_start = start_date
             if latest:
-                fetch_start = latest.date + timedelta(days=1)
+                fetch_start = latest.price_date + timedelta(days=1)
                 if fetch_start >= end_date:
                     continue  # Already up to date
 
@@ -94,11 +94,11 @@ class IngestionService:
             for price_data in prices:
                 price = StockPrice(
                     ticker=price_data.ticker,
-                    date=price_data.date,
-                    open=price_data.open,
-                    high=price_data.high,
-                    low=price_data.low,
-                    close=price_data.close,
+                    price_date=price_data.date,
+                    open_price=price_data.open,
+                    high_price=price_data.high,
+                    low_price=price_data.low,
+                    close_price=price_data.close,
                     adj_close=price_data.adj_close,
                     volume=price_data.volume,
                 )
@@ -180,7 +180,7 @@ class IngestionService:
                 stmt = select(AnalystRating).where(
                     AnalystRating.analyst_id == rating_data.analyst_id,
                     AnalystRating.ticker == rating_data.ticker,
-                    AnalystRating.date == rating_data.date,
+                    AnalystRating.rating_date == rating_data.date,
                 )
                 existing = session.exec(stmt).first()
                 if existing:
@@ -199,7 +199,7 @@ class IngestionService:
                 rating = AnalystRating(
                     analyst_id=rating_data.analyst_id,
                     ticker=rating_data.ticker,
-                    date=rating_data.date,
+                    rating_date=rating_data.date,
                     rating=rating_data.rating.value,
                     price_target=rating_data.price_target,
                 )

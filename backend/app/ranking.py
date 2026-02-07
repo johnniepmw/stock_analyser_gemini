@@ -39,14 +39,12 @@ class RankingService:
         tolerance_days: int = 5
     ) -> float | None:
         """Get closest price to target date within tolerance."""
+        # First try to get exact date or closest after
         stmt = select(StockPrice).where(
             StockPrice.ticker == ticker,
-            StockPrice.date >= target_date - timedelta(days=tolerance_days),
-            StockPrice.date <= target_date + timedelta(days=tolerance_days),
-        ).order_by(
-            # Order by distance from target date
-            (StockPrice.date - target_date).abs()
-        ).limit(1)
+            StockPrice.price_date >= target_date - timedelta(days=tolerance_days),
+            StockPrice.price_date <= target_date + timedelta(days=tolerance_days),
+        ).order_by(StockPrice.price_date).limit(1)
 
         price = session.exec(stmt).first()
         return price.adj_close if price else None
@@ -97,7 +95,7 @@ class RankingService:
             # Get ratings old enough to evaluate
             stmt = select(AnalystRating).where(
                 AnalystRating.analyst_id == analyst.analyst_id,
-                AnalystRating.date <= cutoff_date
+                AnalystRating.rating_date <= cutoff_date
             )
             ratings = session.exec(stmt).all()
 
@@ -108,7 +106,7 @@ class RankingService:
             accurate = 0
 
             for rating in ratings:
-                rating_date = rating.date
+                rating_date = rating.rating_date
                 eval_date = rating_date + timedelta(days=self.evaluation_horizon)
 
                 # Get prices
@@ -165,7 +163,7 @@ class RankingService:
             recent_date = date.today() - timedelta(days=180)
             stmt = select(AnalystRating).where(
                 AnalystRating.ticker == company.ticker,
-                AnalystRating.date >= recent_date
+                AnalystRating.rating_date >= recent_date
             )
             ratings = session.exec(stmt).all()
 

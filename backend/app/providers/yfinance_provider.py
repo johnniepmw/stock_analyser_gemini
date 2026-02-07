@@ -31,25 +31,68 @@ class YFinanceProvider(BaseStockProvider, BaseRatingsProvider):
         self._ratings_cache: list[RatingData] = []
 
     def get_sp500_companies(self) -> list[CompanyData]:
-        """Fetch S&P 500 list from Wikipedia."""
-        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        tables = pd.read_html(response.text)
-        df = tables[0]
+        """Fetch S&P 500 list from Wikipedia with fallback to hardcoded list."""
+        try:
+            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+            tables = pd.read_html(response.text)
+            df = tables[0]
 
-        companies = []
-        for _, row in df.iterrows():
-            companies.append(CompanyData(
-                ticker=row["Symbol"].replace(".", "-"),  # Yahoo uses - instead of .
-                name=row["Security"],
-                sector=row.get("GICS Sector"),
-                industry=row.get("GICS Sub-Industry"),
-            ))
-        return companies
+            companies = []
+            for _, row in df.iterrows():
+                companies.append(CompanyData(
+                    ticker=row["Symbol"].replace(".", "-"),
+                    name=row["Security"],
+                    sector=row.get("GICS Sector"),
+                    industry=row.get("GICS Sub-Industry"),
+                ))
+            return companies
+        except Exception as e:
+            print(f"Wikipedia fetch failed ({e}), using fallback list")
+            return self._get_fallback_companies()
+
+    def _get_fallback_companies(self) -> list[CompanyData]:
+        """Fallback list of top S&P 500 companies."""
+        fallback = [
+            ("AAPL", "Apple Inc.", "Information Technology"),
+            ("MSFT", "Microsoft Corporation", "Information Technology"),
+            ("GOOGL", "Alphabet Inc.", "Communication Services"),
+            ("AMZN", "Amazon.com Inc.", "Consumer Discretionary"),
+            ("NVDA", "NVIDIA Corporation", "Information Technology"),
+            ("META", "Meta Platforms Inc.", "Communication Services"),
+            ("TSLA", "Tesla Inc.", "Consumer Discretionary"),
+            ("BRK-B", "Berkshire Hathaway Inc.", "Financials"),
+            ("UNH", "UnitedHealth Group Inc.", "Health Care"),
+            ("JNJ", "Johnson & Johnson", "Health Care"),
+            ("V", "Visa Inc.", "Financials"),
+            ("XOM", "Exxon Mobil Corporation", "Energy"),
+            ("JPM", "JPMorgan Chase & Co.", "Financials"),
+            ("WMT", "Walmart Inc.", "Consumer Staples"),
+            ("MA", "Mastercard Incorporated", "Financials"),
+            ("PG", "Procter & Gamble Company", "Consumer Staples"),
+            ("HD", "The Home Depot Inc.", "Consumer Discretionary"),
+            ("CVX", "Chevron Corporation", "Energy"),
+            ("MRK", "Merck & Co. Inc.", "Health Care"),
+            ("LLY", "Eli Lilly and Company", "Health Care"),
+            ("ABBV", "AbbVie Inc.", "Health Care"),
+            ("PEP", "PepsiCo Inc.", "Consumer Staples"),
+            ("KO", "The Coca-Cola Company", "Consumer Staples"),
+            ("COST", "Costco Wholesale Corporation", "Consumer Staples"),
+            ("AVGO", "Broadcom Inc.", "Information Technology"),
+            ("TMO", "Thermo Fisher Scientific Inc.", "Health Care"),
+            ("CSCO", "Cisco Systems Inc.", "Information Technology"),
+            ("MCD", "McDonald's Corporation", "Consumer Discretionary"),
+            ("ACN", "Accenture plc", "Information Technology"),
+            ("ABT", "Abbott Laboratories", "Health Care"),
+        ]
+        return [
+            CompanyData(ticker=t, name=n, sector=s)
+            for t, n, s in fallback
+        ]
 
     def get_price_history(
         self,
