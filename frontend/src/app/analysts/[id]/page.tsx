@@ -46,7 +46,6 @@ export default function AnalystDetailPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
         fetchAnalyst(analystId)
             .then(setAnalyst)
             .finally(() => setLoading(false));

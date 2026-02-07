@@ -13,7 +13,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchCompany, CompanyDetail } from "@/lib/api";
+import { HistoricPerformanceChart } from "@/components/HistoricPerformanceChart";
 
 function getRatingBadge(rating: string) {
     const colors: Record<string, string> = {
@@ -44,7 +46,6 @@ export default function CompanyDetailPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
         fetchCompany(ticker)
             .then(setCompany)
             .finally(() => setLoading(false));
@@ -130,52 +131,72 @@ export default function CompanyDetailPage() {
                 </CardContent>
             </Card>
 
-            {/* Analyst Ratings Table */}
-            <Card>
-                <CardHeader>
-                    <CardTitle>Analyst Ratings</CardTitle>
-                    <CardDescription>
-                        Current analyst recommendations weighted by their confidence scores
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Analyst</TableHead>
-                                <TableHead>Firm</TableHead>
-                                <TableHead>Confidence</TableHead>
-                                <TableHead>Date</TableHead>
-                                <TableHead>Rating</TableHead>
-                                <TableHead>Price Target</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {company.analyst_ratings.map((rating, idx) => (
-                                <TableRow key={idx}>
-                                    <TableCell>
-                                        <Link
-                                            href={`/analysts/${rating.analyst_id}`}
-                                            className="text-blue-600 hover:underline font-medium"
-                                        >
-                                            {rating.analyst_name}
-                                        </Link>
-                                    </TableCell>
-                                    <TableCell className="text-muted-foreground">{rating.firm}</TableCell>
-                                    <TableCell>{getConfidenceBadge(rating.confidence_score)}</TableCell>
-                                    <TableCell className="text-muted-foreground">
-                                        {new Date(rating.date).toLocaleDateString()}
-                                    </TableCell>
-                                    <TableCell>{getRatingBadge(rating.rating)}</TableCell>
-                                    <TableCell>
-                                        {rating.price_target ? `$${rating.price_target.toFixed(2)}` : "-"}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+            <Tabs defaultValue="ratings" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+                    <TabsTrigger value="ratings">Analyst Ratings</TabsTrigger>
+                    <TabsTrigger value="performance">Historic Performance</TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="ratings" className="mt-4">
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Analyst Ratings</CardTitle>
+                            <CardDescription>
+                                Current analyst recommendations weighted by their confidence scores
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead>Analyst</TableHead>
+                                        <TableHead>Firm</TableHead>
+                                        <TableHead>Confidence</TableHead>
+                                        <TableHead>Date</TableHead>
+                                        <TableHead>Rating</TableHead>
+                                        <TableHead>Price Target</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {company.analyst_ratings.length > 0 ? (
+                                        company.analyst_ratings.map((rating, idx) => (
+                                            <TableRow key={idx}>
+                                                <TableCell>
+                                                    <Link
+                                                        href={`/analysts/${rating.analyst_id}`}
+                                                        className="text-blue-600 hover:underline font-medium"
+                                                    >
+                                                        {rating.analyst_name}
+                                                    </Link>
+                                                </TableCell>
+                                                <TableCell className="text-muted-foreground">{rating.firm}</TableCell>
+                                                <TableCell>{getConfidenceBadge(rating.confidence_score)}</TableCell>
+                                                <TableCell className="text-muted-foreground">
+                                                    {new Date(rating.date).toLocaleDateString()}
+                                                </TableCell>
+                                                <TableCell>{getRatingBadge(rating.rating)}</TableCell>
+                                                <TableCell>
+                                                    {rating.price_target ? `$${rating.price_target.toFixed(2)}` : "-"}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))
+                                    ) : (
+                                        <TableRow>
+                                            <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                                                No analyst ratings available
+                                            </TableCell>
+                                        </TableRow>
+                                    )}
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="performance" className="mt-4">
+                    <HistoricPerformanceChart ticker={company.ticker} companyName={company.name} />
+                </TabsContent>
+            </Tabs>
         </div>
     );
 }

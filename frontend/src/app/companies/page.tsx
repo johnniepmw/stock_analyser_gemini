@@ -48,7 +48,6 @@ export default function CompaniesPage() {
     }, []);
 
     useEffect(() => {
-        setLoading(true);
         fetchCompanies(page, 20, sortBy, sortOrder, selectedSector)
             .then(setData)
             .finally(() => setLoading(false));

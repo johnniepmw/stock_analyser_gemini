@@ -99,3 +99,49 @@ export async function fetchSectors(): Promise<string[]> {
     if (!res.ok) throw new Error("Failed to fetch sectors");
     return res.json();
 }
+
+export interface StockPrice {
+    date: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+}
+
+export interface BenchmarkPrice {
+    date: string;
+    close: number;
+}
+
+export async function fetchCompanyPrices(
+    ticker: string,
+    startDate?: string,
+    endDate?: string
+): Promise<StockPrice[]> {
+    let url = `${API_BASE}/api/companies/${ticker}/prices`;
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch company prices");
+    return res.json();
+}
+
+export async function fetchBenchmarkPrices(
+    symbol: string,
+    startDate?: string,
+    endDate?: string
+): Promise<BenchmarkPrice[]> {
+    let url = `${API_BASE}/api/benchmark/${symbol}/prices`;
+    const params = new URLSearchParams();
+    if (startDate) params.append("start_date", startDate);
+    if (endDate) params.append("end_date", endDate);
+    if (params.toString()) url += `?${params.toString()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed to fetch benchmark prices");
+    return res.json();
+}

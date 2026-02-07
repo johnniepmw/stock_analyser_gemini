@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from sqlmodel import Session, select
 
 from .database import get_direct_session, create_db_and_tables
-from .models import Analyst, AnalystRating, Company, StockPrice
+from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice
 from .providers.base import BaseRatingsProvider, BaseStockProvider
 
 
@@ -130,6 +130,58 @@ class IngestionService:
                 if company:
                     company.current_price = price
                     count += 1
+
+        session.commit()
+        return count
+
+    def ingest_benchmark_prices(
+        self,
+        session: Session,
+        symbol: str = "SPY",
+        years: int = 5
+    ) -> int:
+        """Ingest historical prices for a benchmark index.
+        
+        Args:
+            session: Database session.
+            symbol: Benchmark symbol (e.g., SPY for S&P 500 ETF).
+            years: Number of years of history to fetch.
+            
+        Returns:
+            Number of price records ingested.
+        """
+        end_date = date.today()
+        start_date = end_date - timedelta(days=years * 365)
+        count = 0
+
+        # Check for most recent price in DB
+        stmt = select(BenchmarkPrice).where(
+            BenchmarkPrice.symbol == symbol.upper()
+        ).order_by(BenchmarkPrice.price_date.desc()).limit(1)
+        latest = session.exec(stmt).first()
+
+        fetch_start = start_date
+        if latest:
+            fetch_start = latest.price_date + timedelta(days=1)
+            if fetch_start >= end_date:
+                return 0  # Already up to date
+
+        prices = self.stock_provider.get_price_history(
+            symbol, fetch_start, end_date
+        )
+
+        for price_data in prices:
+            benchmark = BenchmarkPrice(
+                symbol=symbol.upper(),
+                price_date=price_data.date,
+                close_price=price_data.close,
+            )
+            session.add(benchmark)
+            count += 1
+
+            # Commit periodically
+            if count % 1000 == 0:
+                session.commit()
 
         session.commit()
         return count

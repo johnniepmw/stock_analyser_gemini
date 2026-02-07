@@ -70,3 +70,11 @@ class AnalystRating(SQLModel, table=True):
     # Relationships
     analyst: Optional[Analyst] = Relationship(back_populates="ratings")
     company: Optional[Company] = Relationship(back_populates="ratings")
+
+
+class BenchmarkPrice(SQLModel, table=True):
+    """Historical daily price for a benchmark index (e.g., S&P 500)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str = Field(index=True)  # e.g., "SPY" or "^GSPC"
+    price_date: date = Field(index=True)
+    close_price: float

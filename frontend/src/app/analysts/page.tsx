@@ -30,7 +30,6 @@ export default function AnalystsPage() {
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
-        setLoading(true);
         fetchAnalysts(page, 20, sortBy, sortOrder)
             .then(setData)
             .finally(() => setLoading(false));

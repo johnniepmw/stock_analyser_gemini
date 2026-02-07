@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlmodel import Session, select, func
 
 from .database import create_db_and_tables, get_session
-from .models import Analyst, AnalystRating, Company, StockPrice
+from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice
 
 
 # Pydantic response models
@@ -328,6 +328,36 @@ def get_sectors(session: Session = Depends(get_session)):
     stmt = select(Company.sector).distinct().where(Company.sector.is_not(None))
     sectors = session.exec(stmt).all()
     return sorted([s for s in sectors if s])
+
+
+@app.get("/api/benchmark/{symbol}/prices")
+def get_benchmark_prices(
+    symbol: str,
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    session: Session = Depends(get_session)
+):
+    """Get historical prices for a benchmark index."""
+    stmt = select(BenchmarkPrice).where(BenchmarkPrice.symbol == symbol.upper())
+
+    if start_date:
+        stmt = stmt.where(BenchmarkPrice.price_date >= start_date)
+    if end_date:
+        stmt = stmt.where(BenchmarkPrice.price_date <= end_date)
+
+    stmt = stmt.order_by(BenchmarkPrice.price_date)
+    prices = session.exec(stmt).all()
+
+    if not prices:
+        raise HTTPException(status_code=404, detail=f"No benchmark data found for {symbol}")
+
+    return [
+        {
+            "date": p.price_date.isoformat(),
+            "close": p.close_price,
+        }
+        for p in prices
+    ]
 
 
 # Health check
