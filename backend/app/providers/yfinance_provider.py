@@ -30,68 +30,109 @@ class YFinanceProvider(BaseStockProvider, BaseRatingsProvider):
         self._analysts_cache: dict[str, AnalystData] = {}
         self._ratings_cache: list[RatingData] = []
 
+    # GitHub raw CSV URL for S&P 500 list
+    SP500_CSV_URL = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
+    
     def get_sp500_companies(self) -> list[CompanyData]:
-        """Fetch S&P 500 list from Wikipedia with fallback to hardcoded list."""
-        try:
-            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            }
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
-            tables = pd.read_html(response.text)
-            df = tables[0]
+        """Fetch S&P 500 list with tiered fallback for reliability.
+        
+        Priority:
+        1. GitHub datasets CSV (most reliable remote source)
+        2. Local bundled CSV file
+        3. Hardcoded fallback list
+        """
+        # Try GitHub CSV first
+        companies = self._fetch_from_github_csv()
+        if companies:
+            return companies
+            
+        # Try local file
+        companies = self._load_from_local_csv()
+        if companies:
+            return companies
+            
+        # Final fallback
+        print("All sources failed, using hardcoded fallback")
+        return self._get_hardcoded_fallback()
 
+    def _fetch_from_github_csv(self) -> list[CompanyData] | None:
+        """Fetch S&P 500 list from GitHub datasets repository."""
+        try:
+            response = requests.get(self.SP500_CSV_URL, timeout=10)
+            response.raise_for_status()
+            
+            from io import StringIO
+            df = pd.read_csv(StringIO(response.text))
+            
             companies = []
             for _, row in df.iterrows():
                 companies.append(CompanyData(
-                    ticker=row["Symbol"].replace(".", "-"),
+                    ticker=str(row["Symbol"]).replace(".", "-"),
                     name=row["Security"],
                     sector=row.get("GICS Sector"),
                     industry=row.get("GICS Sub-Industry"),
                 ))
+            print(f"Loaded {len(companies)} companies from GitHub CSV")
             return companies
         except Exception as e:
-            print(f"Wikipedia fetch failed ({e}), using fallback list")
-            return self._get_fallback_companies()
+            print(f"GitHub CSV fetch failed: {e}")
+            return None
 
-    def _get_fallback_companies(self) -> list[CompanyData]:
-        """Fallback list of top S&P 500 companies."""
+    def _load_from_local_csv(self) -> list[CompanyData] | None:
+        """Load S&P 500 list from bundled local CSV file."""
+        import os
+        
+        # Look for CSV in data directory relative to this module
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        csv_path = os.path.join(base_dir, "data", "sp500.csv")
+        
+        if not os.path.exists(csv_path):
+            print(f"Local CSV not found at {csv_path}")
+            return None
+            
+        try:
+            df = pd.read_csv(csv_path)
+            companies = []
+            for _, row in df.iterrows():
+                companies.append(CompanyData(
+                    ticker=str(row["Symbol"]).replace(".", "-"),
+                    name=row["Security"],
+                    sector=row.get("GICS Sector"),
+                    industry=row.get("GICS Sub-Industry"),
+                ))
+            print(f"Loaded {len(companies)} companies from local CSV")
+            return companies
+        except Exception as e:
+            print(f"Local CSV load failed: {e}")
+            return None
+
+    def _get_hardcoded_fallback(self) -> list[CompanyData]:
+        """Hardcoded fallback list of top S&P 500 companies."""
         fallback = [
-            ("AAPL", "Apple Inc.", "Information Technology"),
-            ("MSFT", "Microsoft Corporation", "Information Technology"),
-            ("GOOGL", "Alphabet Inc.", "Communication Services"),
-            ("AMZN", "Amazon.com Inc.", "Consumer Discretionary"),
-            ("NVDA", "NVIDIA Corporation", "Information Technology"),
-            ("META", "Meta Platforms Inc.", "Communication Services"),
-            ("TSLA", "Tesla Inc.", "Consumer Discretionary"),
-            ("BRK-B", "Berkshire Hathaway Inc.", "Financials"),
-            ("UNH", "UnitedHealth Group Inc.", "Health Care"),
-            ("JNJ", "Johnson & Johnson", "Health Care"),
-            ("V", "Visa Inc.", "Financials"),
-            ("XOM", "Exxon Mobil Corporation", "Energy"),
-            ("JPM", "JPMorgan Chase & Co.", "Financials"),
-            ("WMT", "Walmart Inc.", "Consumer Staples"),
-            ("MA", "Mastercard Incorporated", "Financials"),
-            ("PG", "Procter & Gamble Company", "Consumer Staples"),
-            ("HD", "The Home Depot Inc.", "Consumer Discretionary"),
-            ("CVX", "Chevron Corporation", "Energy"),
-            ("MRK", "Merck & Co. Inc.", "Health Care"),
-            ("LLY", "Eli Lilly and Company", "Health Care"),
-            ("ABBV", "AbbVie Inc.", "Health Care"),
-            ("PEP", "PepsiCo Inc.", "Consumer Staples"),
-            ("KO", "The Coca-Cola Company", "Consumer Staples"),
-            ("COST", "Costco Wholesale Corporation", "Consumer Staples"),
-            ("AVGO", "Broadcom Inc.", "Information Technology"),
-            ("TMO", "Thermo Fisher Scientific Inc.", "Health Care"),
-            ("CSCO", "Cisco Systems Inc.", "Information Technology"),
-            ("MCD", "McDonald's Corporation", "Consumer Discretionary"),
-            ("ACN", "Accenture plc", "Information Technology"),
-            ("ABT", "Abbott Laboratories", "Health Care"),
+            ("AAPL", "Apple Inc.", "Information Technology", "Technology Hardware"),
+            ("MSFT", "Microsoft Corporation", "Information Technology", "Software"),
+            ("GOOGL", "Alphabet Inc.", "Communication Services", "Interactive Media"),
+            ("AMZN", "Amazon.com Inc.", "Consumer Discretionary", "Broadline Retail"),
+            ("NVDA", "NVIDIA Corporation", "Information Technology", "Semiconductors"),
+            ("META", "Meta Platforms Inc.", "Communication Services", "Interactive Media"),
+            ("TSLA", "Tesla Inc.", "Consumer Discretionary", "Automobiles"),
+            ("BRK-B", "Berkshire Hathaway Inc.", "Financials", "Multi-Sector Holdings"),
+            ("UNH", "UnitedHealth Group Inc.", "Health Care", "Managed Health Care"),
+            ("JNJ", "Johnson & Johnson", "Health Care", "Pharmaceuticals"),
+            ("V", "Visa Inc.", "Financials", "Transaction Processing"),
+            ("XOM", "Exxon Mobil Corporation", "Energy", "Oil & Gas"),
+            ("JPM", "JPMorgan Chase & Co.", "Financials", "Diversified Banks"),
+            ("WMT", "Walmart Inc.", "Consumer Staples", "Consumer Staples Merch."),
+            ("MA", "Mastercard Incorporated", "Financials", "Transaction Processing"),
+            ("PG", "Procter & Gamble Company", "Consumer Staples", "Household Products"),
+            ("HD", "The Home Depot Inc.", "Consumer Discretionary", "Home Improvement"),
+            ("CVX", "Chevron Corporation", "Energy", "Oil & Gas"),
+            ("MRK", "Merck & Co. Inc.", "Health Care", "Pharmaceuticals"),
+            ("LLY", "Eli Lilly and Company", "Health Care", "Pharmaceuticals"),
         ]
         return [
-            CompanyData(ticker=t, name=n, sector=s)
-            for t, n, s in fallback
+            CompanyData(ticker=t, name=n, sector=s, industry=i)
+            for t, n, s, i in fallback
         ]
 
     def get_price_history(
