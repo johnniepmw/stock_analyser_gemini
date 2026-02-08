@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Loader2, RefreshCw, database, Play } from "lucide-react";
+import { Loader2, RefreshCw, Database, Play } from "lucide-react";
 
 export default function AdminPage() {
     const [dataSources, setDataSources] = useState<Record<string, DataSource[]>>({});
@@ -210,7 +210,25 @@ export default function AdminPage() {
                                                 <TableRow key={job.id}>
                                                     <TableCell className="font-medium">{job.job_type}</TableCell>
                                                     <TableCell>{getJobStatusBadge(job.status)}</TableCell>
-                                                    <TableCell>{new Date(job.start_time).toLocaleString()}</TableCell>
+                                                    <TableCell>
+                                                        <div className="space-y-1">
+                                                            <div>{new Date(job.start_time).toLocaleString()}</div>
+                                                            {(job.status === "running" || job.status === "pending") && job.total_items && (
+                                                                <div className="w-full min-w-[100px] max-w-[140px]">
+                                                                    <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                                                        <span>{Math.round((job.items_processed / job.total_items) * 100)}%</span>
+                                                                        <span>{job.items_processed}/{job.total_items}</span>
+                                                                    </div>
+                                                                    <div className="w-full bg-secondary rounded-full h-2">
+                                                                        <div
+                                                                            className="bg-blue-500 h-2 rounded-full transition-all duration-500"
+                                                                            style={{ width: `${(job.items_processed / job.total_items) * 100}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
                                                     <TableCell>
                                                         {job.end_time
                                                             ? ((new Date(job.end_time).getTime() - new Date(job.start_time).getTime()) / 1000).toFixed(1) + "s"

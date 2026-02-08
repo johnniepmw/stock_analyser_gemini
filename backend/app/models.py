@@ -41,6 +41,8 @@ class Job(SQLModel, table=True):
     status: JobStatus = Field(default=JobStatus.PENDING)
     start_time: datetime = Field(default_factory=datetime.utcnow)
     end_time: Optional[datetime] = None
+    items_processed: int = Field(default=0)
+    total_items: Optional[int] = Field(default=None)
     details: Optional[str] = None  # JSON or text logs
 
 

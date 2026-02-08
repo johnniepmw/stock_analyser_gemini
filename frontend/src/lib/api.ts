@@ -160,6 +160,8 @@ export interface Job {
     status: "pending" | "running" | "completed" | "failed";
     start_time: string;
     end_time: string | null;
+    items_processed: number;
+    total_items: number | null;
     details: string | null;
 }
 

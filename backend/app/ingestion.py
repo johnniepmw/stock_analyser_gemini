@@ -36,6 +36,10 @@ class IngestionService:
         # For now just track the job
         with track_job(session, "ingest_companies") as job:
             companies = self.stock_provider.get_sp500_companies()
+            job.total_items = len(companies)
+            session.add(job)
+            session.commit()
+            
             count = 0
             
             for company_data in companies:
@@ -55,7 +59,12 @@ class IngestionService:
                         market_cap=company_data.market_cap,
                     )
                     session.add(company)
-                    count += 1
+                    
+                count += 1
+                job.items_processed = count
+                if count % 10 == 0:
+                    session.add(job)
+                    session.commit()
     
             session.commit()
             job.details = f"Ingested {count} new companies"
@@ -80,9 +89,14 @@ class IngestionService:
         from .job_tracker import track_job
         
         with track_job(session, "ingest_prices") as job:
+            job.total_items = len(tickers)
+            session.add(job)
+            session.commit()
+            
             end_date = date.today()
             start_date = end_date - timedelta(days=years * 365)
             count = 0
+            processed_tickers = 0
     
             for ticker in tickers:
                 # Check for most recent price in DB
@@ -95,6 +109,10 @@ class IngestionService:
                 if latest:
                     fetch_start = latest.price_date + timedelta(days=1)
                     if fetch_start >= end_date:
+                        processed_tickers += 1
+                        job.items_processed = processed_tickers
+                        session.add(job)
+                        session.commit()
                         continue  # Already up to date
     
                 prices = self.stock_provider.get_price_history(
@@ -114,13 +132,15 @@ class IngestionService:
                     )
                     session.add(price)
                     count += 1
+                
+                processed_tickers += 1
+                job.items_processed = processed_tickers
     
-                # Commit periodically to avoid memory issues
-                if count % 1000 == 0:
-                    session.commit()
+                # Commit periodically to avoid memory issues and update progress
+                session.commit()
     
             session.commit()
-            job.details = f"Ingested {count} price records"
+            job.details = f"Ingested {count} price records for {len(tickers)} tickers"
             return count
 
     def ingest_current_prices(
@@ -164,6 +184,13 @@ class IngestionService:
         from .job_tracker import track_job
         
         with track_job(session, f"ingest_benchmark_{symbol}") as job:
+            # We don't know exact total items ahead of time easily without fetching separate history bounds,
+            # but we can estimate based on years * 252 trading days
+            estimated_days = years * 252
+            job.total_items = estimated_days
+            session.add(job)
+            session.commit()
+            
             end_date = date.today()
             start_date = end_date - timedelta(days=years * 365)
             count = 0
@@ -184,6 +211,11 @@ class IngestionService:
             prices = self.stock_provider.get_price_history(
                 symbol, fetch_start, end_date
             )
+            
+            # Update total to actual if we fetched it
+            job.total_items = len(prices)
+            session.add(job)
+            session.commit()
     
             for price_data in prices:
                 benchmark = BenchmarkPrice(
@@ -193,9 +225,11 @@ class IngestionService:
                 )
                 session.add(benchmark)
                 count += 1
+                job.items_processed = count
     
                 # Commit periodically
-                if count % 1000 == 0:
+                if count % 100 == 0:
+                    session.add(job)
                     session.commit()
     
             session.commit()
@@ -241,7 +275,12 @@ class IngestionService:
         from .job_tracker import track_job
         
         with track_job(session, "ingest_ratings") as job:
+            job.total_items = len(tickers)
+            session.add(job)
+            session.commit()
+            
             count = 0
+            processed_tickers = 0
     
             for ticker in tickers:
                 ratings = self.ratings_provider.get_ratings_for_company(ticker)
@@ -276,13 +315,17 @@ class IngestionService:
                     )
                     session.add(rating)
                     count += 1
+                
+                processed_tickers += 1
+                job.items_processed = processed_tickers
     
                 # Commit periodically
-                if count % 500 == 0:
+                if processed_tickers % 5 == 0:
+                    session.add(job)
                     session.commit()
     
             session.commit()
-            job.details = f"Ingested {count} ratings"
+            job.details = f"Ingested {count} ratings for {len(tickers)} companies"
             return count
 
     def run_full_ingestion(
