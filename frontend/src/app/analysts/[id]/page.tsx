@@ -18,6 +18,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ChevronRight, Info } from "lucide-react";
 import { fetchAnalyst, AnalystDetail, RatingSummary } from "@/lib/api";
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function getRatingBadge(rating: string) {
     const colors: Record<string, string> = {
@@ -105,7 +111,6 @@ export default function AnalystDetailPage() {
 
             // Only count return if available
             // Note: simple average of returns might be misleading if positions overlap, but sufficient for overview
-            // stat.avgReturn logic could be added here if needed
         });
 
         return Object.values(stats).map((stat) => ({
@@ -143,6 +148,7 @@ export default function AnalystDetailPage() {
         ? companyStats.find((c) => c.ticker === selectedCompany)
         : null;
 
+
     return (
         <div className="container mx-auto py-8 px-4 space-y-6">
             {/* Header Card */}
@@ -158,16 +164,44 @@ export default function AnalystDetailPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-4">
-                            <p className="text-sm text-muted-foreground">Confidence Score</p>
-                            <p className="text-2xl font-bold text-blue-600">
-                                {analyst.confidence_score?.toFixed(1) || "N/A"}%
-                            </p>
-                        </div>
-                        <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-lg p-4">
-                            <p className="text-sm text-muted-foreground">Overall Accuracy</p>
-                            <p className="text-2xl font-bold text-emerald-600">{accuracyRate}%</p>
-                        </div>
+                        <TooltipProvider>
+                            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-sm text-muted-foreground">Confidence Score</p>
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <Info className="h-3 w-3 text-muted-foreground" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p className="max-w-xs">
+                                                A score based on the Wilson Score Interval. It accounts for both accuracy and sample size,
+                                                penalizing analysts with few ratings even if they are 100% accurate.
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <p className="text-2xl font-bold text-blue-600">
+                                    {analyst.confidence_score?.toFixed(1) || "N/A"}%
+                                </p>
+                            </div>
+                            <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <p className="text-sm text-muted-foreground">Overall Accuracy</p>
+                                    <Tooltip>
+                                        <TooltipTrigger>
+                                            <Info className="h-3 w-3 text-muted-foreground" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                            <p className="max-w-xs">
+                                                Raw accuracy percentage: (Accurate Ratings / Total Ratings) * 100.
+                                                Does not account for sample size.
+                                            </p>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </div>
+                                <p className="text-2xl font-bold text-emerald-600">{accuracyRate}%</p>
+                            </div>
+                        </TooltipProvider>
                         <div className="bg-gradient-to-br from-amber-500/10 to-orange-500/10 rounded-lg p-4">
                             <p className="text-sm text-muted-foreground">Total Ratings</p>
                             <p className="text-2xl font-bold text-amber-600">{analyst.total_ratings}</p>

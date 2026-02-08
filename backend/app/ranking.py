@@ -78,6 +78,35 @@ class RankingService:
         else:  # hold
             return abs(return_pct) <= threshold * 2
 
+    def _wilson_score(self, positive: int, total: int, confidence: float = 0.95) -> float:
+        """
+        Calculate the lower bound of the Wilson score interval.
+        
+        This provides a more robust confidence score for small sample sizes.
+        
+        Args:
+            positive: Number of positive outcomes (accurate ratings).
+            total: Total number of trials (total ratings).
+            confidence: Confidence level (default 0.95).
+            
+        Returns:
+            Lower bound of the Wilson score interval (0-100).
+        """
+        if total == 0:
+            return 0.0
+            
+        import math
+        
+        # z-score for 95% confidence is ~1.96
+        z = 1.96
+        
+        p = positive / total
+        
+        numerator = p + (z*z)/(2*total) - z * math.sqrt((p*(1-p) + (z*z)/(4*total))/total)
+        denominator = 1 + (z*z)/total
+        
+        return (numerator / denominator) * 100
+
     def calculate_analyst_confidence(self, session: Session) -> int:
         """
         Calculate confidence scores for all analysts.
@@ -91,51 +120,66 @@ class RankingService:
         analysts = session.exec(select(Analyst)).all()
         cutoff_date = date.today() - timedelta(days=self.evaluation_horizon)
         updated = 0
+        
+        with track_job(session, "calculate_analyst_confidence") as job:
+            job.total_items = len(analysts)
+            session.add(job)
+            session.commit()
 
-        for analyst in analysts:
-            # Get ratings old enough to evaluate
-            stmt = select(AnalystRating).where(
-                AnalystRating.analyst_id == analyst.analyst_id,
-                AnalystRating.rating_date <= cutoff_date
-            )
-            ratings = session.exec(stmt).all()
+            for i, analyst in enumerate(analysts):
+                # Get ratings old enough to evaluate
+                stmt = select(AnalystRating).where(
+                    AnalystRating.analyst_id == analyst.analyst_id,
+                    AnalystRating.rating_date <= cutoff_date
+                )
+                ratings = session.exec(stmt).all()
 
-            if len(ratings) < self.min_ratings:
-                continue
-
-            total = 0
-            accurate = 0
-
-            for rating in ratings:
-                rating_date = rating.rating_date
-                eval_date = rating_date + timedelta(days=self.evaluation_horizon)
-
-                # Get prices
-                start_price = self._get_price_at_date(session, rating.ticker, rating_date)
-                end_price = self._get_price_at_date(session, rating.ticker, eval_date)
-
-                if not start_price or not end_price or start_price == 0:
+                if len(ratings) < self.min_ratings:
+                    job.items_processed = i + 1
+                    if i % 10 == 0:
+                        session.commit()
                     continue
 
-                return_pct = (end_price - start_price) / start_price
-                is_accurate = self._was_rating_accurate(rating.rating, return_pct)
+                total = 0
+                accurate = 0
 
-                # Update rating record
-                rating.actual_return = return_pct
-                rating.was_accurate = is_accurate
+                for rating in ratings:
+                    rating_date = rating.rating_date
+                    eval_date = rating_date + timedelta(days=self.evaluation_horizon)
 
-                total += 1
-                if is_accurate:
-                    accurate += 1
+                    # Get prices
+                    start_price = self._get_price_at_date(session, rating.ticker, rating_date)
+                    end_price = self._get_price_at_date(session, rating.ticker, eval_date)
 
-            # Calculate confidence score (0-100)
-            if total >= self.min_ratings:
-                analyst.total_ratings = total
-                analyst.accurate_ratings = accurate
-                analyst.confidence_score = (accurate / total) * 100
-                updated += 1
+                    if not start_price or not end_price or start_price == 0:
+                        continue
 
-        session.commit()
+                    return_pct = (end_price - start_price) / start_price
+                    is_accurate = self._was_rating_accurate(rating.rating, return_pct)
+
+                    # Update rating record
+                    rating.actual_return = return_pct
+                    rating.was_accurate = is_accurate
+
+                    total += 1
+                    if is_accurate:
+                        accurate += 1
+
+                # Calculate confidence score (0-100)
+                if total >= self.min_ratings:
+                    analyst.total_ratings = total
+                    analyst.accurate_ratings = accurate
+                    # Use Wilson Score instead of raw accuracy
+                    analyst.confidence_score = self._wilson_score(accurate, total)
+                    updated += 1
+                
+                job.items_processed = i + 1
+                if i % 10 == 0:
+                    session.commit()
+
+            session.commit()
+            job.details = f"Updated confidence scores for {updated} analysts"
+            
         return updated
 
     def calculate_company_scores(self, session: Session) -> int:
