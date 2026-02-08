@@ -60,7 +60,7 @@ def get_jobs(limit: int = 50, session: Session = Depends(get_session)):
     stmt = select(Job).order_by(Job.start_time.desc()).limit(limit)
     return session.exec(stmt).all()
 
-async def run_ingestion_job(job_type: str, session: Session):
+def run_ingestion_job(job_type: str, session: Session):
     """Background task to run ingestion."""
     # This is a simplified DI - in real app use dependency injection properly
     # For now, we instantiate providers based on active settings
