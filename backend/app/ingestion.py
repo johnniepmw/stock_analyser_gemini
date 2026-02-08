@@ -8,7 +8,7 @@ from datetime import date, timedelta
 from sqlmodel import Session, select
 
 from .database import get_direct_session, create_db_and_tables
-from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice
+from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice, Job, JobStatus, DataSource, DataSourceCategory
 from .providers.base import BaseRatingsProvider, BaseStockProvider
 
 
@@ -29,30 +29,37 @@ class IngestionService:
         Returns:
             Number of companies ingested.
         """
-        companies = self.stock_provider.get_sp500_companies()
-        count = 0
-
-        for company_data in companies:
-            # Check if exists
-            existing = session.get(Company, company_data.ticker)
-            if existing:
-                existing.name = company_data.name
-                existing.sector = company_data.sector
-                existing.industry = company_data.industry
-                existing.market_cap = company_data.market_cap
-            else:
-                company = Company(
-                    ticker=company_data.ticker,
-                    name=company_data.name,
-                    sector=company_data.sector,
-                    industry=company_data.industry,
-                    market_cap=company_data.market_cap,
-                )
-                session.add(company)
-                count += 1
-
-        session.commit()
-        return count
+        # Import inside method to avoid circular imports if any
+        from .job_tracker import track_job
+        
+        # We can also track which data source updated this if implemented
+        # For now just track the job
+        with track_job(session, "ingest_companies") as job:
+            companies = self.stock_provider.get_sp500_companies()
+            count = 0
+            
+            for company_data in companies:
+                # Check if exists
+                existing = session.get(Company, company_data.ticker)
+                if existing:
+                    existing.name = company_data.name
+                    existing.sector = company_data.sector
+                    existing.industry = company_data.industry
+                    existing.market_cap = company_data.market_cap
+                else:
+                    company = Company(
+                        ticker=company_data.ticker,
+                        name=company_data.name,
+                        sector=company_data.sector,
+                        industry=company_data.industry,
+                        market_cap=company_data.market_cap,
+                    )
+                    session.add(company)
+                    count += 1
+    
+            session.commit()
+            job.details = f"Ingested {count} new companies"
+            return count
 
     def ingest_price_history(
         self,
@@ -70,47 +77,51 @@ class IngestionService:
         Returns:
             Number of price records ingested.
         """
-        end_date = date.today()
-        start_date = end_date - timedelta(days=years * 365)
-        count = 0
-
-        for ticker in tickers:
-            # Check for most recent price in DB
-            stmt = select(StockPrice).where(
-                StockPrice.ticker == ticker
-            ).order_by(StockPrice.price_date.desc()).limit(1)
-            latest = session.exec(stmt).first()
-
-            fetch_start = start_date
-            if latest:
-                fetch_start = latest.price_date + timedelta(days=1)
-                if fetch_start >= end_date:
-                    continue  # Already up to date
-
-            prices = self.stock_provider.get_price_history(
-                ticker, fetch_start, end_date
-            )
-
-            for price_data in prices:
-                price = StockPrice(
-                    ticker=price_data.ticker,
-                    price_date=price_data.date,
-                    open_price=price_data.open,
-                    high_price=price_data.high,
-                    low_price=price_data.low,
-                    close_price=price_data.close,
-                    adj_close=price_data.adj_close,
-                    volume=price_data.volume,
+        from .job_tracker import track_job
+        
+        with track_job(session, "ingest_prices") as job:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=years * 365)
+            count = 0
+    
+            for ticker in tickers:
+                # Check for most recent price in DB
+                stmt = select(StockPrice).where(
+                    StockPrice.ticker == ticker
+                ).order_by(StockPrice.price_date.desc()).limit(1)
+                latest = session.exec(stmt).first()
+    
+                fetch_start = start_date
+                if latest:
+                    fetch_start = latest.price_date + timedelta(days=1)
+                    if fetch_start >= end_date:
+                        continue  # Already up to date
+    
+                prices = self.stock_provider.get_price_history(
+                    ticker, fetch_start, end_date
                 )
-                session.add(price)
-                count += 1
-
-            # Commit periodically to avoid memory issues
-            if count % 1000 == 0:
-                session.commit()
-
-        session.commit()
-        return count
+    
+                for price_data in prices:
+                    price = StockPrice(
+                        ticker=price_data.ticker,
+                        price_date=price_data.date,
+                        open_price=price_data.open,
+                        high_price=price_data.high,
+                        low_price=price_data.low,
+                        close_price=price_data.close,
+                        adj_close=price_data.adj_close,
+                        volume=price_data.volume,
+                    )
+                    session.add(price)
+                    count += 1
+    
+                # Commit periodically to avoid memory issues
+                if count % 1000 == 0:
+                    session.commit()
+    
+            session.commit()
+            job.details = f"Ingested {count} price records"
+            return count
 
     def ingest_current_prices(
         self,
@@ -150,41 +161,46 @@ class IngestionService:
         Returns:
             Number of price records ingested.
         """
-        end_date = date.today()
-        start_date = end_date - timedelta(days=years * 365)
-        count = 0
-
-        # Check for most recent price in DB
-        stmt = select(BenchmarkPrice).where(
-            BenchmarkPrice.symbol == symbol.upper()
-        ).order_by(BenchmarkPrice.price_date.desc()).limit(1)
-        latest = session.exec(stmt).first()
-
-        fetch_start = start_date
-        if latest:
-            fetch_start = latest.price_date + timedelta(days=1)
-            if fetch_start >= end_date:
-                return 0  # Already up to date
-
-        prices = self.stock_provider.get_price_history(
-            symbol, fetch_start, end_date
-        )
-
-        for price_data in prices:
-            benchmark = BenchmarkPrice(
-                symbol=symbol.upper(),
-                price_date=price_data.date,
-                close_price=price_data.close,
+        from .job_tracker import track_job
+        
+        with track_job(session, f"ingest_benchmark_{symbol}") as job:
+            end_date = date.today()
+            start_date = end_date - timedelta(days=years * 365)
+            count = 0
+    
+            # Check for most recent price in DB
+            stmt = select(BenchmarkPrice).where(
+                BenchmarkPrice.symbol == symbol.upper()
+            ).order_by(BenchmarkPrice.price_date.desc()).limit(1)
+            latest = session.exec(stmt).first()
+    
+            fetch_start = start_date
+            if latest:
+                fetch_start = latest.price_date + timedelta(days=1)
+                if fetch_start >= end_date:
+                    job.details = "Already up to date"
+                    return 0
+    
+            prices = self.stock_provider.get_price_history(
+                symbol, fetch_start, end_date
             )
-            session.add(benchmark)
-            count += 1
-
-            # Commit periodically
-            if count % 1000 == 0:
-                session.commit()
-
-        session.commit()
-        return count
+    
+            for price_data in prices:
+                benchmark = BenchmarkPrice(
+                    symbol=symbol.upper(),
+                    price_date=price_data.date,
+                    close_price=price_data.close,
+                )
+                session.add(benchmark)
+                count += 1
+    
+                # Commit periodically
+                if count % 1000 == 0:
+                    session.commit()
+    
+            session.commit()
+            job.details = f"Ingested {count} benchmark prices"
+            return count
 
     def ingest_analysts(self, session: Session) -> int:
         """Ingest analysts from ratings provider.
@@ -222,48 +238,52 @@ class IngestionService:
         Returns:
             Number of ratings ingested.
         """
-        count = 0
-
-        for ticker in tickers:
-            ratings = self.ratings_provider.get_ratings_for_company(ticker)
-
-            for rating_data in ratings:
-                # Check for duplicate
-                stmt = select(AnalystRating).where(
-                    AnalystRating.analyst_id == rating_data.analyst_id,
-                    AnalystRating.ticker == rating_data.ticker,
-                    AnalystRating.rating_date == rating_data.date,
-                )
-                existing = session.exec(stmt).first()
-                if existing:
-                    continue
-
-                # Ensure analyst exists
-                analyst = session.get(Analyst, rating_data.analyst_id)
-                if not analyst:
-                    analyst = Analyst(
-                        analyst_id=rating_data.analyst_id,
-                        name=f"Unknown ({rating_data.analyst_id})",
-                        firm="Unknown",
+        from .job_tracker import track_job
+        
+        with track_job(session, "ingest_ratings") as job:
+            count = 0
+    
+            for ticker in tickers:
+                ratings = self.ratings_provider.get_ratings_for_company(ticker)
+    
+                for rating_data in ratings:
+                    # Check for duplicate
+                    stmt = select(AnalystRating).where(
+                        AnalystRating.analyst_id == rating_data.analyst_id,
+                        AnalystRating.ticker == rating_data.ticker,
+                        AnalystRating.rating_date == rating_data.date,
                     )
-                    session.add(analyst)
-
-                rating = AnalystRating(
-                    analyst_id=rating_data.analyst_id,
-                    ticker=rating_data.ticker,
-                    rating_date=rating_data.date,
-                    rating=rating_data.rating.value,
-                    price_target=rating_data.price_target,
-                )
-                session.add(rating)
-                count += 1
-
-            # Commit periodically
-            if count % 500 == 0:
-                session.commit()
-
-        session.commit()
-        return count
+                    existing = session.exec(stmt).first()
+                    if existing:
+                        continue
+    
+                    # Ensure analyst exists
+                    analyst = session.get(Analyst, rating_data.analyst_id)
+                    if not analyst:
+                        analyst = Analyst(
+                            analyst_id=rating_data.analyst_id,
+                            name=f"Unknown ({rating_data.analyst_id})",
+                            firm="Unknown",
+                        )
+                        session.add(analyst)
+    
+                    rating = AnalystRating(
+                        analyst_id=rating_data.analyst_id,
+                        ticker=rating_data.ticker,
+                        rating_date=rating_data.date,
+                        rating=rating_data.rating.value,
+                        price_target=rating_data.price_target,
+                    )
+                    session.add(rating)
+                    count += 1
+    
+                # Commit periodically
+                if count % 500 == 0:
+                    session.commit()
+    
+            session.commit()
+            job.details = f"Ingested {count} ratings"
+            return count
 
     def run_full_ingestion(
         self,

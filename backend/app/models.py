@@ -6,7 +6,42 @@ These models represent the core entities stored in the database.
 
 from datetime import date, datetime
 from typing import Optional
+from enum import Enum
 from sqlmodel import Field, Relationship, SQLModel
+
+
+class DataSourceCategory(str, Enum):
+    """Category of data source."""
+    STOCK_PRICES = "stock_prices"
+    COMPANY_INFO = "company_info"
+    ANALYST_RATINGS = "analyst_ratings"
+
+
+class DataSource(SQLModel, table=True):
+    """Configuration for a data source."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True)  # e.g. "YFinance", "FMP"
+    category: DataSourceCategory = Field(index=True)
+    is_active: bool = Field(default=False)
+    last_updated: Optional[datetime] = None
+
+
+class JobStatus(str, Enum):
+    """Status of a background job."""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Job(SQLModel, table=True):
+    """Record of a data ingestion job."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    job_type: str  # e.g. "ingest_prices"
+    status: JobStatus = Field(default=JobStatus.PENDING)
+    start_time: datetime = Field(default_factory=datetime.utcnow)
+    end_time: Optional[datetime] = None
+    details: Optional[str] = None  # JSON or text logs
 
 
 class Company(SQLModel, table=True):

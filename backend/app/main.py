@@ -6,15 +6,46 @@ Provides REST API endpoints for the Stock Analyser frontend.
 
 from datetime import date
 from typing import Optional
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlmodel import Session, select, func
 
-from .database import create_db_and_tables, get_session
-from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice
+from app.database import create_db_and_tables, get_session
+from app.models import Analyst, AnalystRating, Company, StockPrice, BenchmarkPrice, DataSource, Job
+from app.providers import FMPProvider
+from app.routers import admin
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_db_and_tables()
+    yield
+
+app = FastAPI(
+    lifespan=lifespan,
+    title="Stock Analyser API",
+    description="API for analyzing stocks based on analyst ratings",
+    version="1.0.0"
+)
+
+# CORS configuration
+origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(admin.router)
 
 # Pydantic response models
 class AnalystSummary(BaseModel):
@@ -73,27 +104,9 @@ class PaginatedResponse(BaseModel):
     total_pages: int
 
 
+
 # Create FastAPI app
-app = FastAPI(
-    title="Stock Analyser API",
-    description="API for analyzing stocks based on analyst ratings",
-    version="1.0.0"
-)
 
-# Enable CORS for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-def on_startup():
-    """Initialize database on startup."""
-    create_db_and_tables()
 
 
 # --- Analyst Endpoints ---

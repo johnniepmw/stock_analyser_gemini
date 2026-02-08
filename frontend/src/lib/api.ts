@@ -145,3 +145,46 @@ export async function fetchBenchmarkPrices(
     if (!res.ok) throw new Error("Failed to fetch benchmark prices");
     return res.json();
 }
+
+export interface DataSource {
+    id: number;
+    name: string;
+    category: string;
+    is_active: boolean;
+    last_updated: string | null;
+}
+
+export interface Job {
+    id: number;
+    job_type: string;
+    status: "pending" | "running" | "completed" | "failed";
+    start_time: string;
+    end_time: string | null;
+    details: string | null;
+}
+
+export async function fetchDataSources(): Promise<Record<string, DataSource[]>> {
+    const res = await fetch(`${API_BASE}/api/admin/data-sources`);
+    if (!res.ok) throw new Error("Failed to fetch data sources");
+    return res.json();
+}
+
+export async function activateDataSource(id: number): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/admin/data-sources/${id}/activate`, {
+        method: "POST",
+    });
+    if (!res.ok) throw new Error("Failed to activate data source");
+}
+
+export async function fetchJobs(): Promise<Job[]> {
+    const res = await fetch(`${API_BASE}/api/admin/jobs`);
+    if (!res.ok) throw new Error("Failed to fetch jobs");
+    return res.json();
+}
+
+export async function triggerJob(jobType: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/api/admin/jobs/trigger?job_type=${jobType}`, {
+        method: "POST",
+    });
+    if (!res.ok) throw new Error("Failed to trigger job");
+}

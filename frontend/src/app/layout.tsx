@@ -44,6 +44,12 @@ export default function RootLayout({
                 >
                   Companies
                 </Link>
+                <Link
+                  href="/admin"
+                  className="text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 font-medium transition-colors"
+                >
+                  Admin
+                </Link>
               </div>
             </div>
           </div>
