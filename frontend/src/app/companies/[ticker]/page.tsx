@@ -94,11 +94,21 @@ export default function CompanyDetailPage() {
                 </CardHeader>
                 <CardContent>
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-lg p-4">
+                        <div className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 rounded-lg p-4 relative group">
                             <p className="text-sm text-muted-foreground">Current Price</p>
                             <p className="text-2xl font-bold text-emerald-600">
                                 ${company.current_price?.toFixed(2) || "N/A"}
                             </p>
+                            {(company.price_source || company.last_price_update) && (
+                                <div className="mt-1 text-[10px] text-muted-foreground flex flex-col">
+                                    {company.price_source && <span>Source: {company.price_source}</span>}
+                                    {company.last_price_update && (
+                                        <span title={new Date(company.last_price_update).toLocaleString()}>
+                                            Updated: {new Date(company.last_price_update).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                         <div className="bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-lg p-4">
                             <p className="text-sm text-muted-foreground">Target Price</p>

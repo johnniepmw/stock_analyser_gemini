@@ -30,6 +30,8 @@ export interface CompanySummary {
     current_price: number | null;
     target_price: number | null;
     investment_score: number | null;
+    last_price_update: string | null;
+    price_source: string | null;
 }
 
 export interface CompanyRating {

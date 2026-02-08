@@ -97,6 +97,7 @@ def run_ingestion_job(job_type: str, session: Session):
                     tickers = [c.ticker for c in bg_session.exec(select(Company)).all()]
                 
                 service.ingest_price_history(bg_session, tickers)
+                service.ingest_current_prices(bg_session, tickers)
                 
             elif job_type == "ingest_companies":
                 service.ingest_companies(bg_session)
@@ -109,6 +110,11 @@ def run_ingestion_job(job_type: str, session: Session):
                 
             elif job_type == "ingest_benchmark":
                 service.ingest_benchmark_prices(bg_session)
+                
+            elif job_type == "ingest_current_prices":
+                from app.models import Company
+                tickers = [c.ticker for c in bg_session.exec(select(Company)).all()]
+                service.ingest_current_prices(bg_session, tickers)
 
         except Exception as e:
             print(f"Job failed: {e}")
@@ -120,7 +126,7 @@ def trigger_job(
     session: Session = Depends(get_session)
 ):
     """Trigger a new ingestion job."""
-    valid_jobs = ["ingest_prices", "ingest_companies", "ingest_ratings", "ingest_benchmark"]
+    valid_jobs = ["ingest_prices", "ingest_companies", "ingest_ratings", "ingest_benchmark", "ingest_current_prices"]
     if job_type not in valid_jobs:
         raise HTTPException(status_code=400, detail="Invalid job type")
         

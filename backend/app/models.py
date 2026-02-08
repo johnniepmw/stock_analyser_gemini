@@ -56,6 +56,7 @@ class Company(SQLModel, table=True):
     current_price: Optional[float] = None
     investment_score: Optional[float] = None  # Calculated weighted score
     target_price: Optional[float] = None  # Weighted average target price
+    last_price_update: Optional[datetime] = None
 
     # Relationships
     prices: list["StockPrice"] = Relationship(back_populates="company")

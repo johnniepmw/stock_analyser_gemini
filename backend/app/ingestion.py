@@ -4,12 +4,13 @@ Data ingestion service.
 Orchestrates data providers to fetch and store data in the database.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from sqlmodel import Session, select
 
 from .database import get_direct_session, create_db_and_tables
 from .models import Analyst, AnalystRating, BenchmarkPrice, Company, StockPrice, Job, JobStatus, DataSource, DataSourceCategory
 from .providers.base import BaseRatingsProvider, BaseStockProvider
+from .job_tracker import track_job
 
 
 class IngestionService:
@@ -154,15 +155,26 @@ class IngestionService:
             Number of prices updated.
         """
         count = 0
-        for ticker in tickers:
-            price = self.stock_provider.get_current_price(ticker)
-            if price:
-                company = session.get(Company, ticker)
-                if company:
-                    company.current_price = price
-                    count += 1
-
-        session.commit()
+        with track_job(session, "ingest_current_prices") as job:
+            job.total_items = len(tickers)
+            session.add(job)
+            session.commit()
+            
+            processed = 0
+            for ticker in tickers:
+                price = self.stock_provider.get_current_price(ticker)
+                if price:
+                    company = session.get(Company, ticker)
+                    if company:
+                        company.current_price = price
+                        company.last_price_update = datetime.utcnow()
+                        count += 1
+                
+                processed += 1
+                job.items_processed = processed
+                session.commit()
+                
+            job.details = f"Updated current prices for {count} companies"
         return count
 
     def ingest_benchmark_prices(

@@ -4,7 +4,7 @@ FastAPI application entry point.
 Provides REST API endpoints for the Stock Analyser frontend.
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from contextlib import asynccontextmanager
 
@@ -14,7 +14,8 @@ from pydantic import BaseModel
 from sqlmodel import Session, select, func
 
 from app.database import create_db_and_tables, get_session
-from app.models import Analyst, AnalystRating, Company, StockPrice, BenchmarkPrice, DataSource, Job
+from app.database import create_db_and_tables, get_session
+from app.models import Analyst, AnalystRating, Company, StockPrice, BenchmarkPrice, DataSource, Job, DataSourceCategory
 from app.providers import FMPProvider
 from app.routers import admin
 
@@ -78,6 +79,8 @@ class CompanySummary(BaseModel):
     current_price: Optional[float]
     target_price: Optional[float]
     investment_score: Optional[float]
+    last_price_update: Optional[datetime]
+    price_source: Optional[str]
 
 
 class CompanyDetail(CompanySummary):
@@ -237,6 +240,15 @@ def list_companies(
 
     companies = session.exec(stmt).all()
 
+    # Get active price source
+    price_source = session.exec(
+        select(DataSource).where(
+            DataSource.category == DataSourceCategory.STOCK_PRICES,
+            DataSource.is_active == True
+        )
+    ).first()
+    source_name = price_source.name if price_source else "Unknown"
+
     items = [
         CompanySummary(
             ticker=c.ticker,
@@ -245,6 +257,8 @@ def list_companies(
             current_price=c.current_price,
             target_price=c.target_price,
             investment_score=c.investment_score,
+            last_price_update=c.last_price_update,
+            price_source=source_name,
         )
         for c in companies
     ]
@@ -287,6 +301,15 @@ def get_company(ticker: str, session: Session = Depends(get_session)):
         for r in results
     ]
 
+    # Get active price source
+    price_source = session.exec(
+        select(DataSource).where(
+            DataSource.category == DataSourceCategory.STOCK_PRICES,
+            DataSource.is_active == True
+        )
+    ).first()
+    source_name = price_source.name if price_source else "Unknown"
+
     return CompanyDetail(
         ticker=company.ticker,
         name=company.name,
@@ -296,6 +319,8 @@ def get_company(ticker: str, session: Session = Depends(get_session)):
         current_price=company.current_price,
         target_price=company.target_price,
         investment_score=company.investment_score,
+        last_price_update=company.last_price_update,
+        price_source=source_name,
         analyst_ratings=analyst_ratings,
     )
 
