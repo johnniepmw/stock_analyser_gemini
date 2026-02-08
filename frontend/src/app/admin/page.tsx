@@ -191,6 +191,14 @@ export default function AdminPage() {
                                     {triggering === "ingest_benchmark" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
                                     Ingest Benchmark (SPY)
                                 </Button>
+                                <Button
+                                    onClick={() => handleTriggerJob("calculate_rankings")}
+                                    disabled={!!triggering}
+                                    className="bg-purple-600 hover:bg-purple-700"
+                                >
+                                    {triggering === "calculate_rankings" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />}
+                                    Calculate Rankings
+                                </Button>
                             </div>
 
                             <div className="rounded-md border">

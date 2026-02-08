@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 
 from .database import get_direct_session
 from .models import Analyst, AnalystRating, Company, StockPrice
+from .job_tracker import track_job
 
 
 class RankingService:
@@ -148,63 +149,75 @@ class RankingService:
         """
         companies = session.exec(select(Company)).all()
         updated = 0
+        
+        with track_job(session, "calculate_company_scores") as job:
+            job.total_items = len(companies)
+            session.add(job)
+            session.commit()
 
-        # Define rating values for weighted average
-        rating_values = {
-            "strong_buy": 2.0,
-            "buy": 1.0,
-            "hold": 0.0,
-            "sell": -1.0,
-            "strong_sell": -2.0,
-        }
+            for i, company in enumerate(companies):
+                # Get recent ratings (last 6 months)
+                recent_date = date.today() - timedelta(days=180)
+                stmt = select(AnalystRating).where(
+                    AnalystRating.ticker == company.ticker,
+                    AnalystRating.rating_date >= recent_date
+                )
+                ratings = session.exec(stmt).all()
 
-        for company in companies:
-            # Get recent ratings (last 6 months)
-            recent_date = date.today() - timedelta(days=180)
-            stmt = select(AnalystRating).where(
-                AnalystRating.ticker == company.ticker,
-                AnalystRating.rating_date >= recent_date
-            )
-            ratings = session.exec(stmt).all()
+                if not ratings:
+                    job.items_processed = i + 1
+                    if i % 10 == 0:
+                        session.commit()
+                    continue
 
-            if not ratings:
-                continue
+                weighted_sum = 0.0
+                weight_total = 0.0
+                target_weighted_sum = 0.0
+                target_weight_total = 0.0
 
-            weighted_sum = 0.0
-            weight_total = 0.0
-            target_weighted_sum = 0.0
-            target_weight_total = 0.0
+                for rating in ratings:
+                    # Get analyst confidence
+                    analyst = session.get(Analyst, rating.analyst_id)
+                    confidence = analyst.confidence_score if analyst and analyst.confidence_score else 50.0
 
-            for rating in ratings:
-                # Get analyst confidence
-                analyst = session.get(Analyst, rating.analyst_id)
-                confidence = analyst.confidence_score if analyst and analyst.confidence_score else 50.0
+                    # Weight by confidence (normalized 0-1)
+                    weight = confidence / 100.0
 
-                # Weight by confidence (normalized 0-1)
-                weight = confidence / 100.0
+                    # Add to weighted rating sum
+                    rating_values = {
+                        "strong_buy": 2.0,
+                        "buy": 1.0,
+                        "hold": 0.0,
+                        "sell": -1.0,
+                        "strong_sell": -2.0,
+                    }
+                    rating_value = rating_values.get(rating.rating, 0.0)
+                    weighted_sum += rating_value * weight
+                    weight_total += weight
 
-                # Add to weighted rating sum
-                rating_value = rating_values.get(rating.rating, 0.0)
-                weighted_sum += rating_value * weight
-                weight_total += weight
+                    # Add to target price calculation if available
+                    if rating.price_target:
+                        target_weighted_sum += rating.price_target * weight
+                        target_weight_total += weight
 
-                # Add to target price calculation if available
-                if rating.price_target:
-                    target_weighted_sum += rating.price_target * weight
-                    target_weight_total += weight
+                # Calculate investment score (normalize to 0-100)
+                if weight_total > 0:
+                    avg_rating = weighted_sum / weight_total  # Range: -2 to 2
+                    # Normalize to 0-100: (value + 2) / 4 * 100
+                    company.investment_score = ((avg_rating + 2) / 4) * 100
+                    updated += 1
 
-            # Calculate investment score (normalize to 0-100)
-            if weight_total > 0:
-                avg_rating = weighted_sum / weight_total  # Range: -2 to 2
-                # Normalize to 0-100: (value + 2) / 4 * 100
-                company.investment_score = ((avg_rating + 2) / 4) * 100
-                updated += 1
+                # Calculate weighted average target price
+                if target_weight_total > 0:
+                    company.target_price = target_weighted_sum / target_weight_total
+                
+                job.items_processed = i + 1
+                if i % 10 == 0:
+                    session.commit()
 
-            # Calculate weighted average target price
-            if target_weight_total > 0:
-                company.target_price = target_weighted_sum / target_weight_total
-
-        session.commit()
+            session.commit()
+            job.details = f"Updated investment scores for {updated} companies"
+        
         return updated
 
     def run_full_ranking(self) -> dict:
